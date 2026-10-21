@@ -94,12 +94,17 @@ def get_main_menu(is_teacher=False):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
+    
+    # Кнопка открытия Мини-игры (Web App)
+    # ВАЖНО: вместо ссылки ты потом вставишь ссылку своего Render (например, https://vpk-bot.onrender.com/game)
+    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com)
+    markup.add(telebot.types.KeyboardButton('🎮 Мафия (Бета)', web_app=web_app_info))
+    
     if is_teacher:
         markup.add(telebot.types.KeyboardButton('🔄 Сменить преподавателя'))
     else:
         markup.add(telebot.types.KeyboardButton('🔄 Сменить группу'))
     return markup
-
 def get_groups_menu():
     groups = get_groups()
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)

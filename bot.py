@@ -96,7 +96,7 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
     # Кнопка Мафии (ссылка ведет на твой Render)
-    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com/game")
+    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com")
     markup.add(telebot.types.KeyboardButton('🎮 Мафия (Бета)', web_app=web_app_info))
     
     if is_teacher:

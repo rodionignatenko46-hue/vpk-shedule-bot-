@@ -117,7 +117,7 @@ def get_main_menu(is_teacher=False):
     # Игры и Казино
     markup.add(telebot.types.KeyboardButton('🎰 Казино'), telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))
     
-    web_app_info = telebot.types.WebAppInfo(url="/game")
+    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/game")
     markup.add(telebot.types.KeyboardButton('🎮 Мафия (Бета)', web_app=web_app_info))
     
     if is_teacher:

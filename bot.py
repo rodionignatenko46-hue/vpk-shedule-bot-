@@ -8,8 +8,11 @@ import os
 import uuid
 import random
 
-# ВСТАВЬ СЮДА СВОЙ ТОКЕН
+# ==========================================
+# ВСТАВЬ СЮДА СВОЙ ТОКЕН ОТ @BotFather
 TOKEN = '8980864965:AAErIbgjJ6P_qN_HS-C_KpFy5Vjeupg88pA'
+# ==========================================
+
 bot = telebot.TeleBot(TOKEN)
 API_BASE = "http://109.233.236.101:5000"
 
@@ -230,13 +233,14 @@ def game_page():
             let tg = window.Telegram.WebApp;
             tg.expand();
             tg.setHeaderColor('#0a0a14');
-            let userId = tg.initDataUnsafe?.user?.id;
+            
+            // ЗАЩИТА: Если Telegram не дал ID, генерируем случайный
+            let userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 1000000);
+            
             let currentLobbyId = null;
             let pollInterval = null;
 
             async function createLobby() {
-                if (!userId) return alert("Ошибка: нет данных пользователя Telegram");
-                
                 const res = await fetch('/api/create_lobby', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -251,7 +255,6 @@ def game_page():
             }
 
             async function joinLobby() {
-                if (!userId) return alert("Ошибка: нет данных пользователя Telegram");
                 const code = prompt("Введите код комнаты:");
                 if (!code) return;
 

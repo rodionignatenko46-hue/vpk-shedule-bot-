@@ -12,7 +12,13 @@ import time
 # ==========================================
 # ВСТАВЬ СЮДА СВОЙ ТОКЕН ОТ @BotFather
 TOKEN = '8980864965:AAErIbgjJ6P_qN_HS-C_KpFy5Vjeupg88pA'
+
+# ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
+ADMIN_ID = 8651366498
 # ==========================================
+
+# Глобальный флаг работы бота
+BOT_ACTIVE = True
 
 bot = telebot.TeleBot(TOKEN)
 API_BASE = "http://109.233.236.101:5000"
@@ -21,7 +27,6 @@ API_BASE = "http://109.233.236.101:5000"
 conn = sqlite3.connect('schedule_bot.db', check_same_thread=False)
 cursor = conn.cursor()
 
-# Инициализация базы (добавляем новые колонки, если их нет)
 cursor.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, role TEXT)''')
 cursor.execute("PRAGMA table_info(users)")
 columns = [col[1] for col in cursor.fetchall()]
@@ -39,13 +44,11 @@ def get_user_data(user_id):
 def set_user_data(user_id, name, role, tg_username=None):
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     if cursor.fetchone():
-        # Обновляем существующего
         if tg_username:
             cursor.execute("UPDATE users SET name=?, role=?, tg_username=? WHERE user_id=?", (name, role, tg_username, user_id))
         else:
             cursor.execute("UPDATE users SET name=?, role=? WHERE user_id=?", (name, role, user_id))
     else:
-        # Создаем нового с балансом 100
         cursor.execute("INSERT INTO users (user_id, name, role, balance, tg_username) VALUES (?, ?, ?, 100, ?)", (user_id, name, role, tg_username))
     conn.commit()
 
@@ -113,8 +116,6 @@ def get_main_menu(is_teacher=False):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
-    
-    # Игры и Казино
     markup.add(telebot.types.KeyboardButton('🎰 Казино'), telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))
     
     web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/game")
@@ -146,13 +147,68 @@ def get_casino_bet_menu():
     )
     return markup
 
+# ==========================================
+# --- АДМИН-ПАНЕЛЬ И ГЛОБАЛЬНЫЙ ФИЛЬТР ---
+# ==========================================
+
+# Этот обработчик стоит самым первым. Он ловит все сообщения, если бот выключен.
+@bot.message_handler(func=lambda message: not BOT_ACTIVE and message.from_user.id != ADMIN_ID, content_types=['text'])
+def bot_offline(message):
+    bot.send_message(message.chat.id, "🛠 Бот временно на техническом обслуживании. Пожалуйста, зайдите позже.")
+
+@bot.message_handler(commands=['off'])
+def turn_off(message):
+    global BOT_ACTIVE
+    if message.from_user.id == ADMIN_ID:
+        BOT_ACTIVE = False
+        bot.send_message(message.chat.id, "🛑 **Бот выключен.** Пользователи не могут им пользоваться.")
+    else:
+        bot.send_message(message.chat.id, "❌ У вас нет прав.")
+
+@bot.message_handler(commands=['on'])
+def turn_on(message):
+    global BOT_ACTIVE
+    if message.from_user.id == ADMIN_ID:
+        BOT_ACTIVE = True
+        bot.send_message(message.chat.id, "✅ **Бот включен.** Можно пользоваться.")
+    else:
+        bot.send_message(message.chat.id, "❌ У вас нет прав.")
+
+@bot.message_handler(commands=['stats'])
+def show_stats(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде.")
+        return
+
+    cursor.execute("SELECT user_id, name, role, balance, tg_username FROM users")
+    users = cursor.fetchall()
+    
+    if not users:
+        bot.send_message(message.chat.id, "В базе пока нет пользователей.")
+        return
+
+    text = f"📊 **Статистика бота**\nВсего пользователей: {len(users)}\n\n"
+    
+    for u_id, name, role, balance, tg_user in users:
+        username_str = f"@{tg_user}" if tg_user else f"ID: {u_id}"
+        role_str = "🎓 Студент" if role == "student" else ("👨‍🏫 Препод" if role == "teacher" else "🤷 Неизвестно")
+        
+        text += f"👤 {username_str}\n   Роль: {role_str} ({name})\n   Баланс: {balance} 🪙\n\n"
+        
+        if len(text) > 3500:
+            bot.send_message(message.chat.id, text, parse_mode='Markdown')
+            text = ""
+
+    if text:
+        bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
+
 # --- ОБРАБОТЧИКИ БОТА ---
 @bot.message_handler(commands=['start'])
 def start_message(message):
     tg_user = message.from_user.username
     name, role, balance, _ = get_user_data(message.chat.id)
     
-    # Сохраняем username при первом заходе
     if tg_user:
         set_user_data(message.chat.id, name if name else "Новый", role if role else "none", tg_user)
 
@@ -204,7 +260,6 @@ def show_schedule(message):
     schedule = get_schedule(name, date_from, date_to, is_teacher)
     send_long_message(message.chat.id, f"📚 Расписание {title} ({name}):\n{schedule}", reply_markup=get_main_menu(is_teacher))
 
-# --- КАЗИНО ---
 @bot.message_handler(func=lambda message: message.text == '💰 Баланс')
 def show_balance(message):
     balance = get_balance(message.chat.id)
@@ -213,7 +268,7 @@ def show_balance(message):
 @bot.message_handler(func=lambda message: message.text == '🎰 Казино')
 def casino_menu(message):
     balance = get_balance(message.chat.id)
-    text = f"🎰 **Добро пожаловать в Казино!**\n\nТвой баланс: {balance} 🪙\n\nВыбери ставку и попробуй сорвать куш! (Шанс выигрыша ~40%)\n\n_Если выпадет 3 одинаковых — умножение ставки x5!_\n_Если 2 одинаковых — возврат ставки._"
+    text = f"🎰 **Добро пожаловать в Казино!**\n\nТвой баланс: {balance} 🪙\n\nВыбери ставку и попробуй сорвать куш!"
     bot.send_message(message.chat.id, text, parse_mode='Markdown', reply_markup=get_casino_bet_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('bet_'))
@@ -225,10 +280,7 @@ def play_casino(call):
         bot.answer_callback_query(call.id, "❌ Недостаточно монет на балансе!", show_alert=True)
         return
 
-    # Списываем ставку
     update_balance(call.message.chat.id, -bet)
-    
-    # Крутим слоты
     emojis = ['🍒', '🍋', '🍊', '🍇', '💎', '7️⃣']
     spin = [random.choice(emojis) for _ in range(3)]
     
@@ -251,7 +303,6 @@ def play_casino(call):
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=result_text, parse_mode='Markdown', reply_markup=get_casino_bet_menu())
     bot.answer_callback_query(call.id)
 
-# --- ПЕРЕВОД МОНЕТ ---
 @bot.message_handler(func=lambda message: message.text == '💸 Перевести')
 def transfer_menu(message):
     bot.send_message(message.chat.id, "💸 Чтобы перевести монеты, напиши команду:\n\n`/pay @username сумма`\n\n_Например: `/pay @ivan 50`_", parse_mode='Markdown')
@@ -276,12 +327,11 @@ def transfer_coins(message):
             bot.send_message(message.chat.id, "❌ У тебя недостаточно монет!")
             return
             
-        # Ищем получателя в базе по username
         cursor.execute("SELECT user_id FROM users WHERE tg_username = ?", (target_username,))
         target = cursor.fetchone()
         
         if not target:
-            bot.send_message(message.chat.id, f"❌ Пользователь @{target_username} не найден в боте. Он должен сначала зайти в бота (нажать /start).")
+            bot.send_message(message.chat.id, f"❌ Пользователь @{target_username} не найден в боте.")
             return
             
         target_id = target[0]
@@ -289,7 +339,6 @@ def transfer_coins(message):
             bot.send_message(message.chat.id, "❌ Нельзя переводить монеты самому себе!")
             return
 
-        # Переводим
         update_balance(message.chat.id, -amount)
         update_balance(target_id, amount)
         
@@ -297,7 +346,7 @@ def transfer_coins(message):
         try:
             bot.send_message(target_id, f"🎁 Тебе перевели **{amount} 🪙** от @{message.from_user.username}!\nТвой баланс: {get_balance(target_id)} 🪙", parse_mode='Markdown')
         except:
-            pass # Если получатель заблокировал бота
+            pass
             
     except ValueError:
         bot.send_message(message.chat.id, "❌ Сумма должна быть числом.")
@@ -321,25 +370,19 @@ def handle_text(message):
     else:
         bot.send_message(user_id, "Я не знаю такой команды. Нажми /start.")
 
-
 # ==========================================
 # --- СЕРВЕР ---
 # ==========================================
 app = Flask(__name__)
-lobbies = {}
 
 @app.route('/')
 def home(): 
     return "Bot is running!"
 
-# ... (Остальной код для Мафии оставляем без изменений, он скрыт для краткости, 
-# но если тебе нужно, я могу прислать его снова. Пока вставь этот код, он рабочий) ...
-
 @app.route('/game')
 def game_page():
-    return "Мафия в разработке" # Упростил, чтобы код влез. Мафию вернем позже.
+    return "Мафия в разработке"
 
-# --- ЗАПУСК ---
 def run_bot():
     print("Бот запущен...")
     bot.infinity_polling()

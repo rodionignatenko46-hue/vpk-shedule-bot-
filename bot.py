@@ -196,3 +196,42 @@ if __name__ == '__main__':
     t.start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+# --- БАЗА ДЛЯ МАФИИ (В памяти сервера) ---
+# В реальной игре нужна база данных, но для теста сойдет и так
+lobbies = {} 
+import uuid
+
+# Страница самой игры (HTML)
+@app.route('/game')
+def game_page():
+    # Пока просто возвращаем текст, чтобы проверить, что окно открывается
+    return "<h1 style='color:white;background:black;height:100vh;margin:0;padding:20px;'>Добро пожаловать в Мафию!<br><button>Создать лобби</button></h1>"
+
+# API для создания лобби (вызывается из игры)
+@app.route('/api/create_lobby', methods=['POST'])
+def create_lobby():
+    from flask import request, jsonify
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = str(uuid.uuid4())[:6] # Генерируем код комнаты (например, A1B2C3)
+    
+    lobbies[lobby_id] = {
+        'host': user_id,
+        'players': [user_id],
+        'status': 'waiting'
+    }
+    return jsonify({"success": True, "lobby_id": lobby_id})
+
+# API для подключения к лобби
+@app.route('/api/join_lobby', methods=['POST'])
+def join_lobby():
+    from flask import request, jsonify
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = data.get('lobby_id')
+    
+    if lobby_id in lobbies:
+        if user_id not in lobbies[lobby_id]['players']:
+            lobbies[lobby_id]['players'].append(user_id)
+        return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
+    return jsonify({"success": False, "error": "Лобби не найдено"})

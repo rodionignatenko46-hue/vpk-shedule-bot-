@@ -8,19 +8,15 @@ import os
 import uuid
 import random
 
-# ==========================================
-# ВСТАВЬ СЮДА СВОЙ НОВЫЙ ТОКЕН ОТ @BotFather
+# ВСТАВЬ СЮДА СВОЙ ТОКЕН
 TOKEN = '8980864965:AAErIbgjJ6P_qN_HS-C_KpFy5Vjeupg88pA'
-# ==========================================
-
 bot = telebot.TeleBot(TOKEN)
 API_BASE = "http://109.233.236.101:5000"
 
 # --- БАЗА ДАННЫХ ---
 conn = sqlite3.connect('schedule_bot.db', check_same_thread=False)
 cursor = conn.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                  (user_id INTEGER PRIMARY KEY, name TEXT, role TEXT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, role TEXT)''')
 conn.commit()
 
 def get_user_data(user_id):
@@ -32,7 +28,7 @@ def set_user_data(user_id, name, role):
     cursor.execute("INSERT OR REPLACE INTO users (user_id, name, role) VALUES (?, ?, ?)", (user_id, name, role))
     conn.commit()
 
-# --- РАБОТА С API КОЛЛЕДЖА ---
+# --- API КОЛЛЕДЖА ---
 def get_groups():
     try:
         r = requests.get(f"{API_BASE}/groups")
@@ -45,8 +41,7 @@ def get_schedule(target, date_from, date_to, is_teacher=False):
         param = "teacher" if is_teacher else "group"
         url = f"{API_BASE}/schedule_range?{param}={requests.utils.quote(target)}&from={date_from}&to={date_to}"
         r = requests.get(url)
-        
-        if r.status_code != 200: return "⚠️ Ошибка сервера. Возможно, неверно введено имя."
+        if r.status_code != 200: return "⚠️ Ошибка сервера."
         data = r.json()
         if not data: return "На выбранные даты занятий нет."
         
@@ -54,23 +49,17 @@ def get_schedule(target, date_from, date_to, is_teacher=False):
         for day in data:
             date_obj = datetime.strptime(day['date'], '%Y-%m-%d')
             result += f"\n📅 **{date_obj.strftime('%d.%m.%Y')}**\n"
-            
             if not day.get('lessons'):
                 result += "Занятий нет.\n"
                 continue
-                
             for lesson in day['lessons']:
                 territory = lesson.get('Territory', '')
                 territory_text = f" | 📍 {territory}" if territory else ""
-                
                 if is_teacher:
                     info_line = f"   👥 Группа: {lesson.get('Group', '')}{territory_text}\n"
                 else:
                     info_line = f"   👨‍🏫 {lesson.get('Teacher', '')}{territory_text}\n"
-
-                result += (f"🔹 Пара {lesson.get('NumberLesson', '?')}: {lesson.get('Discipline', '')}\n"
-                           f"{info_line}"
-                           f"   🚪 Ауд. {lesson.get('LectureHall', '')}\n\n")
+                result += (f"🔹 Пара {lesson.get('NumberLesson', '?')}: {lesson.get('Discipline', '')}\n{info_line}   🚪 Ауд. {lesson.get('LectureHall', '')}\n\n")
         return result
     except Exception as e:
         return f"Ошибка: {e}"
@@ -95,7 +84,6 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
-    # Кнопка Мафии (ссылка ведет на твой Render)
     web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/game")
     markup.add(telebot.types.KeyboardButton('🎮 Мафия (Бета)', web_app=web_app_info))
     
@@ -117,7 +105,6 @@ def get_groups_menu():
 def start_message(message):
     name, role = get_user_data(message.chat.id)
     author_info = "🤖 **Создатель:** Игнатенко Р.В. (гр. 36тп)\n"
-    
     if name and role:
         title = "преподаватель" if role == "teacher" else "группа"
         bot.send_message(message.chat.id, f"👋 С возвращением!\nТвой выбор: {title} **{name}**.\n\n{author_info}", parse_mode='Markdown', reply_markup=get_main_menu(role == "teacher"))
@@ -146,7 +133,6 @@ def show_schedule(message):
     if not name or not role:
         bot.send_message(message.chat.id, "Нажми /start, чтобы выбрать роль.")
         return
-
     is_teacher = (role == "teacher")
     today = datetime.now()
     
@@ -170,7 +156,6 @@ def show_schedule(message):
 def handle_text(message):
     text = message.text
     groups = get_groups()
-    
     if text in groups:
         set_user_data(message.chat.id, text, "student")
         bot.send_message(message.chat.id, f"✅ Отлично! Группа **{text}** сохранена.", parse_mode='Markdown', reply_markup=get_main_menu(False))
@@ -180,16 +165,19 @@ def handle_text(message):
     else:
         bot.send_message(message.chat.id, "Я не знаю такой команды. Нажми /start.")
 
+
 # ==========================================
-# --- FLASK СЕРВЕР И ВЕБ-ПРИЛОЖЕНИЕ МАФИИ ---
+# --- СЕРВЕР И ЛОГИКА МАФИИ ---
 # ==========================================
 app = Flask(__name__)
+
+# Хранилище для лобби (в памяти)
+lobbies = {}
 
 @app.route('/')
 def home(): 
     return "Bot is running!"
 
-# Страница для игры Мафия (открывается в окошке Telegram)
 @app.route('/game')
 def game_page():
     html_content = """
@@ -206,26 +194,144 @@ def game_page():
             .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 20px rgba(110, 68, 255, 0.5); width: 80%; max-width: 300px; margin: 0 auto 15px auto; display: block;}
             .btn:active { transform: scale(0.95); }
             .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; box-shadow: none; }
+            
+            /* Экран лобби */
+            #lobby-screen { display: none; flex-direction: column; align-items: center; }
+            .lobby-code { font-size: 36px; font-weight: bold; color: #00ff88; letter-spacing: 5px; margin: 20px 0; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
+            .player-list { background: #1a1a35; padding: 20px; border-radius: 15px; width: 80%; max-width: 300px; margin-bottom: 20px; text-align: left;}
+            .player-item { padding: 10px; border-bottom: 1px solid #2a2a4a; }
+            .player-item:last-child { border-bottom: none; }
         </style>
     </head>
     <body>
-        <h1>🕵️‍♂️ Мафия</h1>
-        <p>Онлайн-игра для компании</p>
-        
-        <button class="btn" onclick="alert('Тут будет создание лобби!')">➕ Создать лобби</button>
-        <button class="btn btn-join" onclick="alert('Тут будет поиск лобби!')">🔍 Найти игру</button>
-        
+        <!-- Главный экран -->
+        <div id="main-screen">
+            <h1>🕵️‍♂️ Мафия</h1>
+            <p>Онлайн-игра для компании</p>
+            <button class="btn" onclick="createLobby()">➕ Создать лобби</button>
+            <button class="btn btn-join" onclick="joinLobby()">🔍 Найти игру</button>
+        </div>
+
+        <!-- Экран лобби -->
+        <div id="lobby-screen">
+            <h1 style="font-size: 24px;">Ожидание игроков</h1>
+            <p style="margin-bottom: 5px;">Код комнаты:</p>
+            <div class="lobby-code" id="lobby-code">----</div>
+            
+            <div class="player-list" id="player-list">
+                <div class="player-item">Загрузка...</div>
+            </div>
+            
+            <p style="font-size: 12px; color: #888;">Скинь этот код друзьям, чтобы они зашли в игру.</p>
+            <button class="btn btn-join" onclick="location.reload()" style="margin-top: 20px;">Выйти</button>
+        </div>
+
         <script>
             let tg = window.Telegram.WebApp;
             tg.expand();
             tg.setHeaderColor('#0a0a14');
+            let userId = tg.initDataUnsafe?.user?.id;
+            let currentLobbyId = null;
+            let pollInterval = null;
+
+            async function createLobby() {
+                if (!userId) return alert("Ошибка: нет данных пользователя Telegram");
+                
+                const res = await fetch('/api/create_lobby', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ user_id: userId })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    currentLobbyId = data.lobby_id;
+                    showLobby(data.lobby_id);
+                }
+            }
+
+            async function joinLobby() {
+                if (!userId) return alert("Ошибка: нет данных пользователя Telegram");
+                const code = prompt("Введите код комнаты:");
+                if (!code) return;
+
+                const res = await fetch('/api/join_lobby', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ user_id: userId, lobby_id: code.toUpperCase() })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    currentLobbyId = code.toUpperCase();
+                    showLobby(currentLobbyId);
+                } else {
+                    alert(data.error);
+                }
+            }
+
+            function showLobby(code) {
+                document.getElementById('main-screen').style.display = 'none';
+                document.getElementById('lobby-screen').style.display = 'flex';
+                document.getElementById('lobby-code').innerText = code;
+                
+                // Начинаем проверять, кто зашел
+                pollInterval = setInterval(() => checkPlayers(code), 2000);
+                checkPlayers(code);
+            }
+
+            async function checkPlayers(code) {
+                const res = await fetch('/api/lobby_status/' + code);
+                const data = await res.json();
+                
+                if (data.success) {
+                    const list = document.getElementById('player-list');
+                    list.innerHTML = '';
+                    data.players.forEach((p, index) => {
+                        list.innerHTML += `<div class="player-item">👤 Игрок ${index + 1}</div>`;
+                    });
+                }
+            }
         </script>
     </body>
     </html>
     """
     return html_content
 
-# --- ЗАПУСК БОТА И СЕРВЕРА ---
+# --- API ДЛЯ ЛОББИ ---
+@app.route('/api/create_lobby', methods=['POST'])
+def create_lobby():
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = str(uuid.uuid4())[:4].upper() # Короткий код из 4 букв/цифр
+    
+    lobbies[lobby_id] = {
+        'host': user_id,
+        'players': [user_id],
+        'status': 'waiting'
+    }
+    return jsonify({"success": True, "lobby_id": lobby_id})
+
+@app.route('/api/join_lobby', methods=['POST'])
+def join_lobby():
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = data.get('lobby_id')
+    
+    if lobby_id in lobbies:
+        if user_id not in lobbies[lobby_id]['players']:
+            lobbies[lobby_id]['players'].append(user_id)
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната не найдена"})
+
+@app.route('/api/lobby_status/<lobby_id>')
+def lobby_status(lobby_id):
+    if lobby_id in lobbies:
+        return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
+    return jsonify({"success": False})
+
+
+# --- ЗАПУСК ---
 def run_bot():
     print("Бот запущен...")
     bot.infinity_polling()

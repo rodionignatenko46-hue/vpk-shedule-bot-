@@ -2,19 +2,23 @@ import telebot
 import requests
 from datetime import datetime, timedelta
 import sqlite3
-from flask import Flask
+from flask import Flask, request, jsonify
 import threading
 import os
+import uuid
+import random
 
+# ==========================================
 # ВСТАВЬ СЮДА СВОЙ НОВЫЙ ТОКЕН ОТ @BotFather
 TOKEN = '8980864965:AAErIbgjJ6P_qN_HS-C_KpFy5Vjeupg88pA'
+# ==========================================
+
 bot = telebot.TeleBot(TOKEN)
 API_BASE = "http://109.233.236.101:5000"
 
 # --- БАЗА ДАННЫХ ---
 conn = sqlite3.connect('schedule_bot.db', check_same_thread=False)
 cursor = conn.cursor()
-# Создаем таблицу (user_id, group_name/teacher_name, role)
 cursor.execute('''CREATE TABLE IF NOT EXISTS users 
                   (user_id INTEGER PRIMARY KEY, name TEXT, role TEXT)''')
 conn.commit()
@@ -28,7 +32,7 @@ def set_user_data(user_id, name, role):
     cursor.execute("INSERT OR REPLACE INTO users (user_id, name, role) VALUES (?, ?, ?)", (user_id, name, role))
     conn.commit()
 
-# --- РАБОТА С API ---
+# --- РАБОТА С API КОЛЛЕДЖА ---
 def get_groups():
     try:
         r = requests.get(f"{API_BASE}/groups")
@@ -38,7 +42,6 @@ def get_groups():
 
 def get_schedule(target, date_from, date_to, is_teacher=False):
     try:
-        # Если препод - используем teacher, если студент - group
         param = "teacher" if is_teacher else "group"
         url = f"{API_BASE}/schedule_range?{param}={requests.utils.quote(target)}&from={date_from}&to={date_to}"
         r = requests.get(url)
@@ -60,7 +63,6 @@ def get_schedule(target, date_from, date_to, is_teacher=False):
                 territory = lesson.get('Territory', '')
                 territory_text = f" | 📍 {territory}" if territory else ""
                 
-                # Для препода выводим группу, для студента - препода
                 if is_teacher:
                     info_line = f"   👥 Группа: {lesson.get('Group', '')}{territory_text}\n"
                 else:
@@ -73,9 +75,7 @@ def get_schedule(target, date_from, date_to, is_teacher=False):
     except Exception as e:
         return f"Ошибка: {e}"
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def send_long_message(chat_id, text, reply_markup=None):
-    # Разбиваем длинные сообщения (лимит телеграма 4096 символов)
     if len(text) <= 4000:
         bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=reply_markup)
     else:
@@ -95,9 +95,8 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
-    # Кнопка открытия Мини-игры (Web App)
-    # ВАЖНО: вместо ссылки ты потом вставишь ссылку своего Render (например, https://vpk-bot.onrender.com/game)
-    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com)
+    # Кнопка Мафии (ссылка ведет на твой Render)
+    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com/game")
     markup.add(telebot.types.KeyboardButton('🎮 Мафия (Бета)', web_app=web_app_info))
     
     if is_teacher:
@@ -105,6 +104,7 @@ def get_main_menu(is_teacher=False):
     else:
         markup.add(telebot.types.KeyboardButton('🔄 Сменить группу'))
     return markup
+
 def get_groups_menu():
     groups = get_groups()
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -112,7 +112,7 @@ def get_groups_menu():
     markup.add(*buttons)
     return markup
 
-# --- ОБРАБОТЧИКИ ---
+# --- ОБРАБОТЧИКИ БОТА ---
 @bot.message_handler(commands=['start'])
 def start_message(message):
     name, role = get_user_data(message.chat.id)
@@ -140,7 +140,6 @@ def change_target(message):
     else:
         bot.send_message(message.chat.id, "Выбери новую группу:", reply_markup=get_groups_menu())
 
-# --- РАСПИСАНИЕ ---
 @bot.message_handler(func=lambda message: message.text in ['📅 Расписание на сегодня', '📅 На неделю', '🗓 На месяц'])
 def show_schedule(message):
     name, role = get_user_data(message.chat.id)
@@ -167,7 +166,6 @@ def show_schedule(message):
     schedule = get_schedule(name, date_from, date_to, is_teacher)
     send_long_message(message.chat.id, f"📚 Расписание {title} ({name}):\n{schedule}", reply_markup=get_main_menu(is_teacher))
 
-# --- ОБРАБОТКА ТЕКСТА (ГРУППЫ ИЛИ ФАМИЛИИ) ---
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     text = message.text
@@ -182,11 +180,52 @@ def handle_text(message):
     else:
         bot.send_message(message.chat.id, "Я не знаю такой команды. Нажми /start.")
 
-# --- ЗАПУСК ДЛЯ RENDER ---
+# ==========================================
+# --- FLASK СЕРВЕР И ВЕБ-ПРИЛОЖЕНИЕ МАФИИ ---
+# ==========================================
 app = Flask(__name__)
-@app.route('/')
-def home(): return "Bot is running!"
 
+@app.route('/')
+def home(): 
+    return "Bot is running!"
+
+# Страница для игры Мафия (открывается в окошке Telegram)
+@app.route('/game')
+def game_page():
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+            h1 { background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 32px; margin-bottom: 10px; }
+            p { color: #888; margin-bottom: 40px; }
+            .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 20px rgba(110, 68, 255, 0.5); width: 80%; max-width: 300px; margin: 0 auto 15px auto; display: block;}
+            .btn:active { transform: scale(0.95); }
+            .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; box-shadow: none; }
+        </style>
+    </head>
+    <body>
+        <h1>🕵️‍♂️ Мафия</h1>
+        <p>Онлайн-игра для компании</p>
+        
+        <button class="btn" onclick="alert('Тут будет создание лобби!')">➕ Создать лобби</button>
+        <button class="btn btn-join" onclick="alert('Тут будет поиск лобби!')">🔍 Найти игру</button>
+        
+        <script>
+            let tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.setHeaderColor('#0a0a14');
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
+
+# --- ЗАПУСК БОТА И СЕРВЕРА ---
 def run_bot():
     print("Бот запущен...")
     bot.infinity_polling()
@@ -196,42 +235,3 @@ if __name__ == '__main__':
     t.start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-# --- БАЗА ДЛЯ МАФИИ (В памяти сервера) ---
-# В реальной игре нужна база данных, но для теста сойдет и так
-lobbies = {} 
-import uuid
-
-# Страница самой игры (HTML)
-@app.route('/game')
-def game_page():
-    # Пока просто возвращаем текст, чтобы проверить, что окно открывается
-    return "<h1 style='color:white;background:black;height:100vh;margin:0;padding:20px;'>Добро пожаловать в Мафию!<br><button>Создать лобби</button></h1>"
-
-# API для создания лобби (вызывается из игры)
-@app.route('/api/create_lobby', methods=['POST'])
-def create_lobby():
-    from flask import request, jsonify
-    data = request.json
-    user_id = data.get('user_id')
-    lobby_id = str(uuid.uuid4())[:6] # Генерируем код комнаты (например, A1B2C3)
-    
-    lobbies[lobby_id] = {
-        'host': user_id,
-        'players': [user_id],
-        'status': 'waiting'
-    }
-    return jsonify({"success": True, "lobby_id": lobby_id})
-
-# API для подключения к лобби
-@app.route('/api/join_lobby', methods=['POST'])
-def join_lobby():
-    from flask import request, jsonify
-    data = request.json
-    user_id = data.get('user_id')
-    lobby_id = data.get('lobby_id')
-    
-    if lobby_id in lobbies:
-        if user_id not in lobbies[lobby_id]['players']:
-            lobbies[lobby_id]['players'].append(user_id)
-        return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
-    return jsonify({"success": False, "error": "Лобби не найдено"})

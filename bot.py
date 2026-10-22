@@ -113,7 +113,7 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
     # ЕДИНАЯ КНОПКА ИГР (Web App)
-    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com/games")
+    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
     
     # Баланс и Переводы оставляем в чате

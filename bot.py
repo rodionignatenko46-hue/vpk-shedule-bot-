@@ -2,21 +2,20 @@ import telebot
 import requests
 from datetime import datetime, timedelta
 import sqlite3
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 import threading
 import os
 import uuid
 import random
 
 # ==========================================
-# ВСТАВЬ СЮДА СВОЙ ТОКЕН ОТ @BotFather
+# ВСТАВЬ СЮДА СВОЙ НОВЫЙ ТОКЕН ОТ @BotFather
 TOKEN = '8980864965:AAFZe1aOfdxGDe5nbBlHrHZPt7PeMsogQ6E'
 
 # ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
-ADMIN_ID = 123456789 
+ADMIN_ID = 8651366498 
 # ==========================================
 
-# Глобальный флаг работы бота
 BOT_ACTIVE = True
 bot = telebot.TeleBot(TOKEN)
 API_BASE = "http://109.233.236.101:5000"
@@ -112,11 +111,9 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
-    # ЕДИНАЯ КНОПКА ИГР (Web App)
-    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
+    web_app_info = telebot.types.WebAppInfo(url="https://college-botpython-bot-py.onrender.com/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
     
-    # Баланс и Переводы оставляем в чате
     markup.add(telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))
     
     if is_teacher:
@@ -132,9 +129,7 @@ def get_groups_menu():
     markup.add(*buttons)
     return markup
 
-# ==========================================
 # --- АДМИН-ПАНЕЛЬ ---
-# ==========================================
 @bot.message_handler(func=lambda message: not BOT_ACTIVE and message.from_user.id != ADMIN_ID, content_types=['text'])
 def bot_offline(message):
     bot.send_message(message.chat.id, "🛠 Бот временно на техническом обслуживании.")
@@ -155,8 +150,7 @@ def turn_on(message):
 
 @bot.message_handler(commands=['stats'])
 def show_stats(message):
-    if message.from_user.id != ADMIN_ID:
-        return
+    if message.from_user.id != ADMIN_ID: return
     cursor.execute("SELECT user_id, name, role, balance, tg_username FROM users")
     users = cursor.fetchall()
     text = f"📊 **Статистика бота**\nВсего пользователей: {len(users)}\n\n"
@@ -258,7 +252,6 @@ app = Flask(__name__)
 def home(): 
     return "Bot is running!"
 
-# 1. ХАБ ИГР (Открывается по кнопке "🎮 Игры")
 @app.route('/games')
 def games_hub():
     html = """
@@ -282,13 +275,10 @@ def games_hub():
     <body>
         <h1>🎮 Игровой Хаб</h1>
         <div class="grid">
-            <!-- Ссылка на Мафию -->
             <a href="/game" class="game-card">
                 <div class="game-icon">🕵️‍♂️</div>
                 <div class="game-title">Мафия</div>
             </a>
-
-            <!-- Заглушки для других игр -->
             <div class="game-card disabled">
                 <div class="game-icon">🎰</div>
                 <div class="game-title">Казино (Скоро)</div>
@@ -308,7 +298,6 @@ def games_hub():
     """
     return html
 
-# 2. ИГРА МАФИЯ (Открывается из хаба)
 @app.route('/game')
 def game_page():
     html_content = """
@@ -388,7 +377,6 @@ def game_page():
     """
     return html_content
 
-# --- API ДЛЯ МАФИИ ---
 lobbies = {}
 
 @app.route('/api/create_lobby', methods=['POST'])
@@ -402,4 +390,13 @@ def create_lobby():
 @app.route('/api/join_lobby', methods=['POST'])
 def join_lobby():
     data = request.json
-    user_id = data.get('u
+    user_id = data.get('user_id')
+    lobby_id = data.get('lobby_id')
+    if lobby_id in lobbies:
+        if user_id not in lobbies[lobby_id]['players']: lobbies[lobby_id]['players'].append(user_id)
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната не найдена"})
+
+@app.route('/api/lobby_status/<lobby_id>')
+def lobby_status(lobby_id):
+    if lobby_id in lobbies: return jsonify({"success": 

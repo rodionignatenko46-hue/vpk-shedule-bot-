@@ -111,7 +111,7 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
-    web_app_info = telebot.types.WebAppInfo(url="/games")
+    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
     
     markup.add(telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))

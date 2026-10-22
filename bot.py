@@ -255,11 +255,19 @@ def home():
 # --- ВЕБХУК ДЛЯ TELEGRAM ---
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
+    try:
+        json_string = request.get_data().decode('utf-8')
+        print("ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM:", json_string[:100], "...") # Выведет начало сообщения в логи
+        update = telebot.types.Update.de_json(json_string)
+        if update:
+            print("РАСШИФРОВАНО УСПЕШНО")
+            bot.process_new_updates([update])
+            print("ПЕРЕДАНО В БОТА")
+        else:
+            print("ОШИБКА: update равен None")
+    except Exception as e:
+        print("КРИТИЧЕСКАЯ ОШИБКА ПРИ ОБРАБОТКЕ:", e)
     return "!", 200
-
 @app.route('/set_webhook')
 def set_webhook():
     # Эта функция нужна, чтобы сообщить Telegram, куда отправлять сообщения

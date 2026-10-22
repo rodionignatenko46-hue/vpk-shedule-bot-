@@ -394,4 +394,263 @@ def rps_page():
             .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; }
             #game-area { display: none; flex-direction: column; align-items: center; }
             .choices { display: flex; gap: 15px; margin: 30px 0; }
-            .choice-btn { font-size: 50px; backg
+            .choice-btn { font-size: 50px; background: #14142b; border: 1px solid #2a2a4a; border-radius: 20px; padding: 15px; cursor: pointer; }
+            .choice-btn:active { transform: scale(0.9); }
+            .code { font-size: 30px; color: #00ff88; font-weight: bold; letter-spacing: 5px; }
+            .back-btn { position: absolute; top: 20px; left: 20px; color: #6e44ff; text-decoration: none; font-size: 24px; }
+        </style>
+    </head>
+    <body>
+        <a href="/games" class="back-btn">←</a>
+        <div id="lobby-screen">
+            <h1>КНБ Дуэль</h1>
+            <button class="btn" onclick="createGame()">➕ Создать игру</button>
+            <button class="btn btn-join" onclick="joinGame()">🔍 Присоединиться</button>
+        </div>
+        <div id="game-area">
+            <h2 id="status">Ожидание...</h2>
+            <div class="code" id="room-code">----</div>
+            <div class="choices">
+                <div class="choice-btn" onclick="makeChoice('rock')">✊</div>
+                <div class="choice-btn" onclick="makeChoice('scissors')">✌️</div>
+                <div class="choice-btn" onclick="makeChoice('paper')">✋</div>
+            </div>
+        </div>
+        <script>
+            let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14');
+            let userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 1000000);
+            let roomId = null; let hasChosen = false;
+
+            async function createGame() {
+                const res = await fetch('/api/rps/create', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId }) });
+                const data = await res.json();
+                if (data.success) {
+                    roomId = data.room_id;
+                    document.getElementById('lobby-screen').style.display = 'none';
+                    document.getElementById('game-area').style.display = 'flex';
+                    document.getElementById('room-code').innerText = roomId;
+                    document.getElementById('status').innerText = "Ждем второго игрока...";
+                    pollState();
+                }
+            }
+
+            async function joinGame() {
+                const code = prompt("Введите код комнаты:");
+                if (!code) return;
+                const res = await fetch('/api/rps/join', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId, room_id: code.toUpperCase() }) });
+                const data = await res.json();
+                if (data.success) {
+                    roomId = code.toUpperCase();
+                    document.getElementById('lobby-screen').style.display = 'none';
+                    document.getElementById('game-area').style.display = 'flex';
+                    document.getElementById('room-code').innerText = roomId;
+                    pollState();
+                } else alert(data.error);
+            }
+
+            async function makeChoice(choice) {
+                if (!roomId || hasChosen) return;
+                hasChosen = true;
+                document.getElementById('status').innerText = "Выбор сделан. Ждем соперника...";
+                await fetch('/api/rps/choose', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ room_id: roomId, user_id: userId, choice: choice }) });
+            }
+
+            async function pollState() {
+                if (!roomId) return;
+                const res = await fetch('/api/rps/state/' + roomId + '?user_id=' + userId);
+                const data = await res.json();
+                if (data.success) {
+                    if (data.status === 'waiting') document.getElementById('status').innerText = "Ждем игрока...";
+                    else if (data.status === 'playing') {
+                        if (!hasChosen) document.getElementById('status').innerText = "Сделай свой выбор!";
+                    } else if (data.status === 'finished') {
+                        const emojis = {'rock': '✊', 'scissors': '✌️', 'paper': '✋'};
+                        let txt = `Ты: ${emojis[data.choices[userId]]} | Соперник: ${emojis[data.choices[data.opponent]]}\n`;
+                        if (data.winner === userId) txt += "🎉 Ты победил!";
+                        else if (data.winner === 'draw') txt += "🤝 Ничья!";
+                        else txt += "😢 Ты проиграл";
+                        document.getElementById('status').innerText = txt;
+                        return; 
+                    }
+                }
+                setTimeout(pollState, 1500);
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return html
+
+# --- 4. МАФИЯ (ЛОББИ) ---
+@app.route('/mafia')
+def mafia_page():
+    html = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+            h1 { background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 32px; margin-bottom: 10px; }
+            p { color: #888; margin-bottom: 40px; }
+            .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 20px rgba(110, 68, 255, 0.5); width: 80%; max-width: 300px; margin: 0 auto 15px auto; display: block;}
+            .btn:active { transform: scale(0.95); }
+            .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; box-shadow: none; }
+            #lobby-screen { display: none; flex-direction: column; align-items: center; }
+            .lobby-code { font-size: 36px; font-weight: bold; color: #00ff88; letter-spacing: 5px; margin: 20px 0; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
+            .player-list { background: #1a1a35; padding: 20px; border-radius: 15px; width: 80%; max-width: 300px; margin-bottom: 20px; text-align: left;}
+            .player-item { padding: 10px; border-bottom: 1px solid #2a2a4a; }
+            .player-item:last-child { border-bottom: none; }
+            .back-btn { position: absolute; top: 20px; left: 20px; color: #6e44ff; text-decoration: none; font-size: 24px; }
+        </style>
+    </head>
+    <body>
+        <a href="/games" class="back-btn">←</a>
+        <div id="main-screen">
+            <h1>🕵️‍♂️ Мафия</h1>
+            <p>Онлайн-игра для компании</p>
+            <button class="btn" onclick="createLobby()">➕ Создать лобби</button>
+            <button class="btn btn-join" onclick="joinLobby()">🔍 Найти игру</button>
+        </div>
+        <div id="lobby-screen">
+            <h1 style="font-size: 24px;">Ожидание игроков</h1>
+            <p style="margin-bottom: 5px;">Код комнаты:</p>
+            <div class="lobby-code" id="lobby-code">----</div>
+            <div class="player-list" id="player-list"><div class="player-item">Загрузка...</div></div>
+            <p style="font-size: 12px; color: #888;">Скинь этот код друзьям.</p>
+            <button class="btn btn-join" onclick="location.reload()" style="margin-top: 20px;">Выйти</button>
+        </div>
+        <script>
+            let tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.setHeaderColor('#0a0a14');
+            let userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 1000000);
+            async function createLobby() {
+                const res = await fetch('/api/create_lobby', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId }) });
+                const data = await res.json();
+                if (data.success) showLobby(data.lobby_id);
+            }
+            async function joinLobby() {
+                const code = prompt("Введите код комнаты:");
+                if (!code) return;
+                const res = await fetch('/api/join_lobby', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId, lobby_id: code.toUpperCase() }) });
+                const data = await res.json();
+                if (data.success) showLobby(code.toUpperCase()); else alert(data.error);
+            }
+            function showLobby(code) {
+                document.getElementById('main-screen').style.display = 'none';
+                document.getElementById('lobby-screen').style.display = 'flex';
+                document.getElementById('lobby-code').innerText = code;
+                setInterval(() => checkPlayers(code), 2000);
+                checkPlayers(code);
+            }
+            async function checkPlayers(code) {
+                const res = await fetch('/api/lobby_status/' + code);
+                const data = await res.json();
+                if (data.success) {
+                    const list = document.getElementById('player-list');
+                    list.innerHTML = '';
+                    data.players.forEach((p, index) => { list.innerHTML += `<div class="player-item">👤 Игрок ${index + 1}</div>`; });
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return html
+
+# --- API ДЛЯ МАФИИ ---
+@app.route('/api/create_lobby', methods=['POST'])
+def create_lobby():
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = str(uuid.uuid4())[:4].upper()
+    mafia_lobbies[lobby_id] = {'host': user_id, 'players': [user_id], 'status': 'waiting'}
+    return jsonify({"success": True, "lobby_id": lobby_id})
+
+@app.route('/api/join_lobby', methods=['POST'])
+def join_lobby():
+    data = request.json
+    user_id = data.get('user_id')
+    lobby_id = data.get('lobby_id')
+    if lobby_id in mafia_lobbies:
+        if user_id not in mafia_lobbies[lobby_id]['players']: mafia_lobbies[lobby_id]['players'].append(user_id)
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната не найдена"})
+
+@app.route('/api/lobby_status/<lobby_id>')
+def lobby_status(lobby_id):
+    if lobby_id in mafia_lobbies: return jsonify({"success": True, "players": mafia_lobbies[lobby_id]['players']})
+    return jsonify({"success": False})
+
+# --- API ДЛЯ КРЕСТИКОВ-НОЛИКОВ ---
+@app.route('/api/ttt/create', methods=['POST'])
+def ttt_create():
+    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
+    ttt_games[room_id] = {'board': [None]*9, 'players': [u_id], 'turn': u_id, 'status': 'waiting', 'winner': None}
+    return jsonify({"success": True, "room_id": room_id})
+@app.route('/api/ttt/join', methods=['POST'])
+def ttt_join():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']
+    if room_id in ttt_games and len(ttt_games[room_id]['players']) == 1:
+        ttt_games[room_id]['players'].append(u_id); ttt_games[room_id]['status'] = 'playing'
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната занята"})
+@app.route('/api/ttt/move', methods=['POST'])
+def ttt_move():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']; idx = data['index']
+    g = ttt_games.get(room_id)
+    if not g or g['status'] != 'playing' or g['turn'] != u_id or g['board'][idx]: return jsonify({"success": False})
+    symbol = 'X' if g['players'][0] == u_id else 'O'; g['board'][idx] = symbol
+    win_lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
+    for line in win_lines:
+        if g['board'][line[0]] == g['board'][line[1]] == g['board'][line[2]] != None:
+            g['status'] = 'finished'; g['winner'] = u_id; return jsonify({"success": True})
+    if None not in g['board']: g['status'] = 'finished'; g['winner'] = 'draw'; return jsonify({"success": True})
+    g['turn'] = g['players'][1] if g['turn'] == g['players'][0] else g['players'][0]
+    return jsonify({"success": True})
+@app.route('/api/ttt/state/<room_id>')
+def ttt_state(room_id):
+    g = ttt_games.get(room_id)
+    if g: return jsonify({"success": True, "board": g['board'], "status": g['status'], "turn": g['turn'], "winner": g['winner']})
+    return jsonify({"success": False})
+
+# --- API ДЛЯ КНБ ---
+@app.route('/api/rps/create', methods=['POST'])
+def rps_create():
+    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
+    rps_games[room_id] = {'players': [u_id], 'choices': {}, 'status': 'waiting', 'winner': None}
+    return jsonify({"success": True, "room_id": room_id})
+@app.route('/api/rps/join', methods=['POST'])
+def rps_join():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']
+    if room_id in rps_games and len(rps_games[room_id]['players']) == 1:
+        rps_games[room_id]['players'].append(u_id); rps_games[room_id]['status'] = 'playing'
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната занята"})
+@app.route('/api/rps/choose', methods=['POST'])
+def rps_choose():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']; choice = data['choice']
+    g = rps_games.get(room_id)
+    if not g or g['status'] != 'playing': return jsonify({"success": False})
+    g['choices'][u_id] = choice
+    if len(g['choices']) == 2:
+        p1, p2 = g['players']; c1, c2 = g['choices'][p1], g['choices'][p2]
+        if c1 == c2: g['winner'] = 'draw'
+        elif (c1 == 'rock' and c2 == 'scissors') or (c1 == 'scissors' and c2 == 'paper') or (c1 == 'paper' and c2 == 'rock'): g['winner'] = p1
+        else: g['winner'] = p2
+        g['status'] = 'finished'
+    return jsonify({"success": True})
+@app.route('/api/rps/state/<room_id>')
+def rps_state(room_id):
+    g = rps_games.get(room_id)
+    if g:
+        u_id = request.args.get('user_id')
+        opp = [p for p in g['players'] if str(p) != str(u_id)]
+        return jsonify({"success": True, "status": g['status'], "choices": g['choices'], "winner": g['winner'], "opponent": opp[0] if opp else None})
+    return jsonify({"success": False})
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

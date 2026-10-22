@@ -10,7 +10,7 @@ import random
 
 # ==========================================
 # ВСТАВЬ СЮДА СВОЙ НОВЫЙ ТОКЕН ОТ @BotFather
-TOKEN = '8980864965:AAFZe1aOfdxGDe5nbBlHrHZPt7PeMsogQ6E'
+TOKEN = '8980864965:AAGCxoMfoUI0Ro6YgXCi1vzWX2mCq5vWtyw'
 
 # ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
 ADMIN_ID = 8651366498

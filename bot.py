@@ -399,4 +399,6 @@ def join_lobby():
 
 @app.route('/api/lobby_status/<lobby_id>')
 def lobby_status(lobby_id):
-    if lobby_id in lobbies: return jsonify({"success": 
+    if lobby_id in lobbies:
+        return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
+    return jsonify({"success": False})

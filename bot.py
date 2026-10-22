@@ -7,17 +7,18 @@ import threading
 import os
 import uuid
 import random
+import time
 
 # ==========================================
 # ВСТАВЬ СЮДА СВОЙ НОВЫЙ ТОКЕН ОТ @BotFather
 TOKEN = '8980864965:AAGCxoMfoUI0Ro6YgXCi1vzWX2mCq5vWtyw'
 
 # ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
-ADMIN_ID = 8651366498
+ADMIN_ID = 8651366498 
 # ==========================================
 
 BOT_ACTIVE = True
-bot = telebot.TeleBot(TOKEN, threaded=False) 
+bot = telebot.TeleBot(TOKEN, threaded=False)
 API_BASE = "http://109.233.236.101:5000"
 
 # --- БАЗА ДАННЫХ ---
@@ -44,10 +45,6 @@ def set_user_data(user_id, name, role, tg_username=None):
             cursor.execute("UPDATE users SET name=?, role=? WHERE user_id=?", (name, role, user_id))
     else:
         cursor.execute("INSERT INTO users (user_id, name, role, balance, tg_username) VALUES (?, ?, ?, 100, ?)", (user_id, name, role, tg_username))
-    conn.commit()
-
-def update_balance(user_id, amount):
-    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
 
 def get_balance(user_id):
@@ -114,7 +111,8 @@ def get_main_menu(is_teacher=False):
     web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
     
-    markup.add(telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))
+    # НОВАЯ КНОПКА НАЗАД
+    markup.add(telebot.types.KeyboardButton('⬅️ Назад в выбор роли'))
     
     if is_teacher:
         markup.add(telebot.types.KeyboardButton('🔄 Сменить преподавателя'))
@@ -186,6 +184,15 @@ def change_target(message):
     if role == "teacher": bot.send_message(message.chat.id, "Напиши фамилию другого преподавателя:")
     else: bot.send_message(message.chat.id, "Выбери новую группу:", reply_markup=get_groups_menu())
 
+# ОБРАБОТЧИК КНОПКИ "НАЗАД"
+@bot.message_handler(func=lambda message: message.text == '⬅️ Назад в выбор роли')
+def back_to_role_menu(message):
+    user_id = message.chat.id
+    tg_user = message.from_user.username
+    # Сбрасываем группу/фамилию и ставим роль "none"
+    set_user_data(user_id, "Новый", "none", tg_user)
+    bot.send_message(user_id, "Выбери, кто ты:", reply_markup=get_role_menu())
+
 @bot.message_handler(func=lambda message: message.text in ['📅 Расписание на сегодня', '📅 На неделю', '🗓 На месяц'])
 def show_schedule(message):
     name, role, balance, _ = get_user_data(message.chat.id)
@@ -198,35 +205,6 @@ def show_schedule(message):
     bot.send_message(message.chat.id, f"⏳ Загружаю...")
     schedule = get_schedule(name, date_from, date_to, is_teacher)
     send_long_message(message.chat.id, f"📚 Расписание {title} ({name}):\n{schedule}", reply_markup=get_main_menu(is_teacher))
-
-@bot.message_handler(func=lambda message: message.text == '💰 Баланс')
-def show_balance(message):
-    balance = get_balance(message.chat.id)
-    bot.send_message(message.chat.id, f"💰 Твой баланс: **{balance} 🪙**", parse_mode='Markdown')
-
-@bot.message_handler(func=lambda message: message.text == '💸 Перевести')
-def transfer_menu(message):
-    bot.send_message(message.chat.id, "💸 Формат: `/pay @username сумма`", parse_mode='Markdown')
-
-@bot.message_handler(commands=['pay'])
-def transfer_coins(message):
-    try:
-        parts = message.text.split()
-        if len(parts) != 3: return bot.send_message(message.chat.id, "❌ Формат: `/pay @username сумма`", parse_mode='Markdown')
-        target_username = parts[1].replace('@', '')
-        amount = int(parts[2])
-        if amount <= 0: return bot.send_message(message.chat.id, "❌ Сумма > 0")
-        if get_balance(message.chat.id) < amount: return bot.send_message(message.chat.id, "❌ Мало монет!")
-        cursor.execute("SELECT user_id FROM users WHERE tg_username = ?", (target_username,))
-        target = cursor.fetchone()
-        if not target: return bot.send_message(message.chat.id, f"❌ @{target_username} не найден.")
-        target_id = target[0]
-        if target_id == message.chat.id: return bot.send_message(message.chat.id, "❌ Себе нельзя.")
-        update_balance(message.chat.id, -amount); update_balance(target_id, amount)
-        bot.send_message(message.chat.id, f"✅ Переведено {amount} 🪙 для @{target_username}!")
-        try: bot.send_message(target_id, f"🎁 Тебе перевели {amount} 🪙 от @{message.from_user.username}!")
-        except: pass
-    except ValueError: bot.send_message(message.chat.id, "❌ Сумма должна быть числом.")
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
@@ -244,81 +222,130 @@ def handle_text(message):
         bot.send_message(user_id, "Нажми /start.")
 
 # ==========================================
-# --- ВЕБ-СЕРВЕР (FLASK) ---
+# --- ВЕБ-СЕРВЕР (FLASK) И ИГРЫ ---
 # ==========================================
 app = Flask(__name__)
 
-@app.route('/')
-def home(): 
-    return "Bot is running!"
+mafia_lobbies = {}
+ttt_games = {}
+rps_games = {}
 
-# --- ВЕБХУК ДЛЯ TELEGRAM ---
+@app.route('/')
+def home(): return "Bot is running!"
+
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     try:
         json_string = request.get_data().decode('utf-8')
-        print("ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM:", json_string[:100], "...") # Выведет начало сообщения в логи
         update = telebot.types.Update.de_json(json_string)
-        if update:
-            print("РАСШИФРОВАНО УСПЕШНО")
-            bot.process_new_updates([update])
-            print("ПЕРЕДАНО В БОТА")
-        else:
-            print("ОШИБКА: update равен None")
-    except Exception as e:
-        print("КРИТИЧЕСКАЯ ОШИБКА ПРИ ОБРАБОТКЕ:", e)
+        if update: bot.process_new_updates([update])
+    except Exception as e: print("Ошибка вебхука:", e)
     return "!", 200
+
 @app.route('/set_webhook')
 def set_webhook():
-    # Эта функция нужна, чтобы сообщить Telegram, куда отправлять сообщения
-    # Замени URL на свой адрес Render!
     url = "https://vpk-shedule-bot.onrender.com/" + TOKEN
     s = bot.set_webhook(url)
-    if s:
-        return "Webhook setup ok"
-    else:
-        return "Webhook setup failed"
+    return "Webhook setup ok" if s else "Webhook setup failed"
 
-# --- ИГРЫ (Web App) ---
 @app.route('/games')
 def games_hub():
-    # ... (код хаба игр оставь как был, он не мешает) ...
-    return "Игровой хаб"
+    html = """
+    <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; min-height: 100vh; }
+    h1 { text-align: center; background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .game-card { background: #14142b; border: 1px solid #2a2a4a; border-radius: 20px; padding: 20px; text-align: center; text-decoration: none; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
+    .game-card:active { transform: scale(0.95); background: #1a1a35; }
+    .game-icon { font-size: 40px; margin-bottom: 10px; } .game-title { font-weight: bold; font-size: 16px; }</style></head>
+    <body><h1>🎮 Игровой Хаб</h1><div class="grid">
+    <a href="/mafia" class="game-card"><div class="game-icon">🕵️‍♂️</div><div class="game-title">Мафия (Лобби)</div></a>
+    <a href="/ttt" class="game-card"><div class="game-icon">❌⭕</div><div class="game-title">Крестики-Нолики</div></a>
+    <a href="/rps" class="game-card"><div class="game-icon">✊✌️✋</div><div class="game-title">КНБ (Дуэль)</div></a>
+    </div><script> let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14'); </script></body></html>
+    """
+    return html
 
-@app.route('/game')
-def game_page():
-    # ... (код мафии оставь как был) ...
-    return "Мафия"
+@app.route('/ttt')
+def ttt_page():
+    # ... (код крестиков-ноликов оставляем как был) ...
+    return "Крестики нолики (вставь HTML сюда)" # Заглушка, в реальном коде тут полный HTML из прошлого сообщения
 
-# --- API ДЛЯ ЛОББИ ---
-lobbies = {}
-@app.route('/api/create_lobby', methods=['POST'])
-def create_lobby():
-    data = request.json
-    user_id = data.get('user_id')
-    lobby_id = str(uuid.uuid4())[:4].upper()
-    lobbies[lobby_id] = {'host': user_id, 'players': [user_id], 'status': 'waiting'}
-    return jsonify({"success": True, "lobby_id": lobby_id})
+@app.route('/rps')
+def rps_page():
+    # ... (код КНБ оставляем как был) ...
+    return "КНБ (вставь HTML сюда)" # Заглушка
 
-@app.route('/api/join_lobby', methods=['POST'])
-def join_lobby():
-    data = request.json
-    user_id = data.get('user_id')
-    lobby_id = data.get('lobby_id')
-    if lobby_id in lobbies:
-        if user_id not in lobbies[lobby_id]['players']: lobbies[lobby_id]['players'].append(user_id)
+@app.route('/mafia')
+def mafia_page(): return "<h1>Мафия в разработке</h1><a href='/games'>Назад</a>"
+
+# --- API ДЛЯ КРЕСТИКОВ-НОЛИКОВ ---
+@app.route('/api/ttt/create', methods=['POST'])
+def ttt_create():
+    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
+    ttt_games[room_id] = {'board': [None]*9, 'players': [u_id], 'turn': u_id, 'status': 'waiting', 'winner': None}
+    return jsonify({"success": True, "room_id": room_id})
+@app.route('/api/ttt/join', methods=['POST'])
+def ttt_join():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']
+    if room_id in ttt_games and len(ttt_games[room_id]['players']) == 1:
+        ttt_games[room_id]['players'].append(u_id); ttt_games[room_id]['status'] = 'playing'
         return jsonify({"success": True})
-    return jsonify({"success": False, "error": "Комната не найдена"})
-
-@app.route('/api/lobby_status/<lobby_id>')
-def lobby_status(lobby_id):
-    if lobby_id in lobbies:
-        return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
+    return jsonify({"success": False, "error": "Комната занята"})
+@app.route('/api/ttt/move', methods=['POST'])
+def ttt_move():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']; idx = data['index']
+    g = ttt_games.get(room_id)
+    if not g or g['status'] != 'playing' or g['turn'] != u_id or g['board'][idx]: return jsonify({"success": False})
+    symbol = 'X' if g['players'][0] == u_id else 'O'; g['board'][idx] = symbol
+    win_lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
+    for line in win_lines:
+        if g['board'][line[0]] == g['board'][line[1]] == g['board'][line[2]] != None:
+            g['status'] = 'finished'; g['winner'] = u_id; return jsonify({"success": True})
+    if None not in g['board']: g['status'] = 'finished'; g['winner'] = 'draw'; return jsonify({"success": True})
+    g['turn'] = g['players'][1] if g['turn'] == g['players'][0] else g['players'][0]
+    return jsonify({"success": True})
+@app.route('/api/ttt/state/<room_id>')
+def ttt_state(room_id):
+    g = ttt_games.get(room_id)
+    if g: return jsonify({"success": True, "board": g['board'], "status": g['status'], "turn": g['turn'], "winner": g['winner']})
     return jsonify({"success": False})
 
-# --- ЗАПУСК ---
+# --- API ДЛЯ КНБ ---
+@app.route('/api/rps/create', methods=['POST'])
+def rps_create():
+    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
+    rps_games[room_id] = {'players': [u_id], 'choices': {}, 'status': 'waiting', 'winner': None}
+    return jsonify({"success": True, "room_id": room_id})
+@app.route('/api/rps/join', methods=['POST'])
+def rps_join():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']
+    if room_id in rps_games and len(rps_games[room_id]['players']) == 1:
+        rps_games[room_id]['players'].append(u_id); rps_games[room_id]['status'] = 'playing'
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Комната занята"})
+@app.route('/api/rps/choose', methods=['POST'])
+def rps_choose():
+    data = request.json; u_id = data['user_id']; room_id = data['room_id']; choice = data['choice']
+    g = rps_games.get(room_id)
+    if not g or g['status'] != 'playing': return jsonify({"success": False})
+    g['choices'][u_id] = choice
+    if len(g['choices']) == 2:
+        p1, p2 = g['players']; c1, c2 = g['choices'][p1], g['choices'][p2]
+        if c1 == c2: g['winner'] = 'draw'
+        elif (c1 == 'rock' and c2 == 'scissors') or (c1 == 'scissors' and c2 == 'paper') or (c1 == 'paper' and c2 == 'rock'): g['winner'] = p1
+        else: g['winner'] = p2
+        g['status'] = 'finished'
+    return jsonify({"success": True})
+@app.route('/api/rps/state/<room_id>')
+def rps_state(room_id):
+    g = rps_games.get(room_id)
+    if g:
+        u_id = request.args.get('user_id')
+        opp = [p for p in g['players'] if str(p) != str(u_id)]
+        return jsonify({"success": True, "status": g['status'], "choices": g['choices'], "winner": g['winner'], "opponent": opp[0] if opp else None})
+    return jsonify({"success": False})
+
 if __name__ == '__main__':
-    # Удаляем вебхук, если он был, и запускаем сервер
-    bot.remove_webhook()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

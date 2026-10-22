@@ -14,7 +14,7 @@ import time
 TOKEN = '8980864965:AAGCxoMfoUI0Ro6YgXCi1vzWX2mCq5vWtyw'
 
 # ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
-ADMIN_ID = 8651366498 
+ADMIN_ID = 8651366498
 # ==========================================
 
 BOT_ACTIVE = True
@@ -110,8 +110,6 @@ def get_main_menu(is_teacher=False):
     
     web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
-    
-    # НОВАЯ КНОПКА НАЗАД
     markup.add(telebot.types.KeyboardButton('⬅️ Назад в выбор роли'))
     
     if is_teacher:
@@ -184,14 +182,10 @@ def change_target(message):
     if role == "teacher": bot.send_message(message.chat.id, "Напиши фамилию другого преподавателя:")
     else: bot.send_message(message.chat.id, "Выбери новую группу:", reply_markup=get_groups_menu())
 
-# ОБРАБОТЧИК КНОПКИ "НАЗАД"
 @bot.message_handler(func=lambda message: message.text == '⬅️ Назад в выбор роли')
 def back_to_role_menu(message):
-    user_id = message.chat.id
-    tg_user = message.from_user.username
-    # Сбрасываем группу/фамилию и ставим роль "none"
-    set_user_data(user_id, "Новый", "none", tg_user)
-    bot.send_message(user_id, "Выбери, кто ты:", reply_markup=get_role_menu())
+    set_user_data(message.chat.id, "Новый", "none", message.from_user.username)
+    bot.send_message(message.chat.id, "Выбери, кто ты:", reply_markup=get_role_menu())
 
 @bot.message_handler(func=lambda message: message.text in ['📅 Расписание на сегодня', '📅 На неделю', '🗓 На месяц'])
 def show_schedule(message):
@@ -226,6 +220,7 @@ def handle_text(message):
 # ==========================================
 app = Flask(__name__)
 
+# Хранилища для игр
 mafia_lobbies = {}
 ttt_games = {}
 rps_games = {}
@@ -248,104 +243,155 @@ def set_webhook():
     s = bot.set_webhook(url)
     return "Webhook setup ok" if s else "Webhook setup failed"
 
+# --- 1. ГЛАВНЫЙ ХАБ ИГР ---
 @app.route('/games')
 def games_hub():
     html = """
-    <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; min-height: 100vh; }
-    h1 { text-align: center; background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .game-card { background: #14142b; border: 1px solid #2a2a4a; border-radius: 20px; padding: 20px; text-align: center; text-decoration: none; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
-    .game-card:active { transform: scale(0.95); background: #1a1a35; }
-    .game-icon { font-size: 40px; margin-bottom: 10px; } .game-title { font-weight: bold; font-size: 16px; }</style></head>
-    <body><h1>🎮 Игровой Хаб</h1><div class="grid">
-    <a href="/mafia" class="game-card"><div class="game-icon">🕵️‍♂️</div><div class="game-title">Мафия (Лобби)</div></a>
-    <a href="/ttt" class="game-card"><div class="game-icon">❌⭕</div><div class="game-title">Крестики-Нолики</div></a>
-    <a href="/rps" class="game-card"><div class="game-icon">✊✌️✋</div><div class="game-title">КНБ (Дуэль)</div></a>
-    </div><script> let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14'); </script></body></html>
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; min-height: 100vh; }
+            h1 { text-align: center; background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+            .game-card { background: #14142b; border: 1px solid #2a2a4a; border-radius: 20px; padding: 20px; text-align: center; text-decoration: none; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
+            .game-card:active { transform: scale(0.95); background: #1a1a35; }
+            .game-icon { font-size: 40px; margin-bottom: 10px; } .game-title { font-weight: bold; font-size: 16px; }
+        </style>
+    </head>
+    <body>
+        <h1>🎮 Игровой Хаб</h1>
+        <div class="grid">
+            <a href="/mafia" class="game-card"><div class="game-icon">🕵️‍♂️</div><div class="game-title">Мафия (Лобби)</div></a>
+            <a href="/ttt" class="game-card"><div class="game-icon">❌⭕</div><div class="game-title">Крестики-Нолики</div></a>
+            <a href="/rps" class="game-card"><div class="game-icon">✊✌️✋</div><div class="game-title">КНБ (Дуэль)</div></a>
+        </div>
+        <script> let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14'); </script>
+    </body>
+    </html>
     """
     return html
 
+# --- 2. КРЕСТИКИ-НОЛИКИ (ПОЛНЫЙ КОД) ---
 @app.route('/ttt')
 def ttt_page():
-    # ... (код крестиков-ноликов оставляем как был) ...
-    return "Крестики нолики (вставь HTML сюда)" # Заглушка, в реальном коде тут полный HTML из прошлого сообщения
+    html = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; display: flex; flex-direction: column; align-items: center; }
+            h1 { background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+            .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 10px; width: 200px; }
+            .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; }
+            #game-area { display: none; flex-direction: column; align-items: center; }
+            .board { display: grid; grid-template-columns: repeat(3, 90px); grid-template-rows: repeat(3, 90px); gap: 5px; margin: 20px auto; }
+            .cell { background: #14142b; border: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: center; font-size: 40px; cursor: pointer; border-radius: 10px; }
+            .cell:active { background: #1a1a35; }
+            .code { font-size: 30px; color: #00ff88; font-weight: bold; letter-spacing: 5px; }
+            .back-btn { position: absolute; top: 20px; left: 20px; color: #6e44ff; text-decoration: none; font-size: 24px; }
+        </style>
+    </head>
+    <body>
+        <a href="/games" class="back-btn">←</a>
+        <div id="lobby-screen">
+            <h1>Крестики-Нолики</h1>
+            <button class="btn" onclick="createGame()">➕ Создать игру</button>
+            <button class="btn btn-join" onclick="joinGame()">🔍 Присоединиться</button>
+        </div>
+        <div id="game-area">
+            <h2 id="status">Ожидание...</h2>
+            <div class="code" id="room-code">----</div>
+            <div class="board" id="board"></div>
+        </div>
+        <script>
+            let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14');
+            let userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 1000000);
+            let roomId = null; let mySymbol = null;
+            
+            function renderBoard(board) {
+                const b = document.getElementById('board'); b.innerHTML = '';
+                board.forEach((cell, i) => {
+                    const d = document.createElement('div'); d.className = 'cell';
+                    d.innerText = cell || '';
+                    d.onclick = () => makeMove(i);
+                    b.appendChild(d);
+                });
+            }
 
+            async function createGame() {
+                const res = await fetch('/api/ttt/create', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId }) });
+                const data = await res.json();
+                if (data.success) {
+                    roomId = data.room_id; mySymbol = 'X';
+                    document.getElementById('lobby-screen').style.display = 'none';
+                    document.getElementById('game-area').style.display = 'flex';
+                    document.getElementById('room-code').innerText = roomId;
+                    document.getElementById('status').innerText = "Ждем второго игрока...";
+                    pollState();
+                }
+            }
+
+            async function joinGame() {
+                const code = prompt("Введите код комнаты:");
+                if (!code) return;
+                const res = await fetch('/api/ttt/join', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId, room_id: code.toUpperCase() }) });
+                const data = await res.json();
+                if (data.success) {
+                    roomId = code.toUpperCase(); mySymbol = 'O';
+                    document.getElementById('lobby-screen').style.display = 'none';
+                    document.getElementById('game-area').style.display = 'flex';
+                    document.getElementById('room-code').innerText = roomId;
+                    pollState();
+                } else alert(data.error);
+            }
+
+            async function makeMove(index) {
+                if (!roomId) return;
+                await fetch('/api/ttt/move', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ room_id: roomId, user_id: userId, index: index }) });
+            }
+
+            async function pollState() {
+                if (!roomId) return;
+                const res = await fetch('/api/ttt/state/' + roomId);
+                const data = await res.json();
+                if (data.success) {
+                    renderBoard(data.board);
+                    if (data.status === 'waiting') document.getElementById('status').innerText = "Ждем игрока...";
+                    else if (data.status === 'playing') {
+                        document.getElementById('status').innerText = data.turn === userId ? "Твой ход!" : "Ход соперника...";
+                    } else if (data.status === 'finished') {
+                        if (data.winner === 'draw') document.getElementById('status').innerText = "Ничья! 🤝";
+                        else document.getElementById('status').innerText = data.winner === userId ? "Ты победил! 🎉" : "Ты проиграл 😢";
+                        return; // Останавливаем обновление
+                    }
+                }
+                setTimeout(pollState, 1500);
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return html
+
+# --- 3. КНБ (ПОЛНЫЙ КОД) ---
 @app.route('/rps')
 def rps_page():
-    # ... (код КНБ оставляем как был) ...
-    return "КНБ (вставь HTML сюда)" # Заглушка
-
-@app.route('/mafia')
-def mafia_page(): return "<h1>Мафия в разработке</h1><a href='/games'>Назад</a>"
-
-# --- API ДЛЯ КРЕСТИКОВ-НОЛИКОВ ---
-@app.route('/api/ttt/create', methods=['POST'])
-def ttt_create():
-    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
-    ttt_games[room_id] = {'board': [None]*9, 'players': [u_id], 'turn': u_id, 'status': 'waiting', 'winner': None}
-    return jsonify({"success": True, "room_id": room_id})
-@app.route('/api/ttt/join', methods=['POST'])
-def ttt_join():
-    data = request.json; u_id = data['user_id']; room_id = data['room_id']
-    if room_id in ttt_games and len(ttt_games[room_id]['players']) == 1:
-        ttt_games[room_id]['players'].append(u_id); ttt_games[room_id]['status'] = 'playing'
-        return jsonify({"success": True})
-    return jsonify({"success": False, "error": "Комната занята"})
-@app.route('/api/ttt/move', methods=['POST'])
-def ttt_move():
-    data = request.json; u_id = data['user_id']; room_id = data['room_id']; idx = data['index']
-    g = ttt_games.get(room_id)
-    if not g or g['status'] != 'playing' or g['turn'] != u_id or g['board'][idx]: return jsonify({"success": False})
-    symbol = 'X' if g['players'][0] == u_id else 'O'; g['board'][idx] = symbol
-    win_lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
-    for line in win_lines:
-        if g['board'][line[0]] == g['board'][line[1]] == g['board'][line[2]] != None:
-            g['status'] = 'finished'; g['winner'] = u_id; return jsonify({"success": True})
-    if None not in g['board']: g['status'] = 'finished'; g['winner'] = 'draw'; return jsonify({"success": True})
-    g['turn'] = g['players'][1] if g['turn'] == g['players'][0] else g['players'][0]
-    return jsonify({"success": True})
-@app.route('/api/ttt/state/<room_id>')
-def ttt_state(room_id):
-    g = ttt_games.get(room_id)
-    if g: return jsonify({"success": True, "board": g['board'], "status": g['status'], "turn": g['turn'], "winner": g['winner']})
-    return jsonify({"success": False})
-
-# --- API ДЛЯ КНБ ---
-@app.route('/api/rps/create', methods=['POST'])
-def rps_create():
-    u_id = request.json['user_id']; room_id = str(uuid.uuid4())[:4].upper()
-    rps_games[room_id] = {'players': [u_id], 'choices': {}, 'status': 'waiting', 'winner': None}
-    return jsonify({"success": True, "room_id": room_id})
-@app.route('/api/rps/join', methods=['POST'])
-def rps_join():
-    data = request.json; u_id = data['user_id']; room_id = data['room_id']
-    if room_id in rps_games and len(rps_games[room_id]['players']) == 1:
-        rps_games[room_id]['players'].append(u_id); rps_games[room_id]['status'] = 'playing'
-        return jsonify({"success": True})
-    return jsonify({"success": False, "error": "Комната занята"})
-@app.route('/api/rps/choose', methods=['POST'])
-def rps_choose():
-    data = request.json; u_id = data['user_id']; room_id = data['room_id']; choice = data['choice']
-    g = rps_games.get(room_id)
-    if not g or g['status'] != 'playing': return jsonify({"success": False})
-    g['choices'][u_id] = choice
-    if len(g['choices']) == 2:
-        p1, p2 = g['players']; c1, c2 = g['choices'][p1], g['choices'][p2]
-        if c1 == c2: g['winner'] = 'draw'
-        elif (c1 == 'rock' and c2 == 'scissors') or (c1 == 'scissors' and c2 == 'paper') or (c1 == 'paper' and c2 == 'rock'): g['winner'] = p1
-        else: g['winner'] = p2
-        g['status'] = 'finished'
-    return jsonify({"success": True})
-@app.route('/api/rps/state/<room_id>')
-def rps_state(room_id):
-    g = rps_games.get(room_id)
-    if g:
-        u_id = request.args.get('user_id')
-        opp = [p for p in g['players'] if str(p) != str(u_id)]
-        return jsonify({"success": True, "status": g['status'], "choices": g['choices'], "winner": g['winner'], "opponent": opp[0] if opp else None})
-    return jsonify({"success": False})
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    html = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; display: flex; flex-direction: column; align-items: center; }
+            h1 { background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+            .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 10px; width: 200px; }
+            .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; }
+            #game-area { display: none; flex-direction: column; align-items: center; }
+            .choices { display: flex; gap: 15px; margin: 30px 0; }
+            .choice-btn { font-size: 50px; backg

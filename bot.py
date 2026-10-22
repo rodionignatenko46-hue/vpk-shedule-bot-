@@ -13,7 +13,7 @@ import random
 TOKEN = '8980864965:AAFZe1aOfdxGDe5nbBlHrHZPt7PeMsogQ6E'
 
 # ВСТАВЬ СЮДА СВОЙ ID (цифры от @userinfobot)
-ADMIN_ID = 8651366498 
+ADMIN_ID = 8651366498
 # ==========================================
 
 BOT_ACTIVE = True
@@ -111,7 +111,7 @@ def get_main_menu(is_teacher=False):
     markup.add(telebot.types.KeyboardButton('📅 Расписание на сегодня'))
     markup.add(telebot.types.KeyboardButton('📅 На неделю'), telebot.types.KeyboardButton('🗓 На месяц'))
     
-    web_app_info = telebot.types.WebAppInfo(url="https://vpk-shedule-bot.onrender.com/games")
+    web_app_info = telebot.types.WebAppInfo(url="/games")
     markup.add(telebot.types.KeyboardButton('🎮 Игры', web_app=web_app_info))
     
     markup.add(telebot.types.KeyboardButton('💰 Баланс'), telebot.types.KeyboardButton('💸 Перевести'))
@@ -252,133 +252,38 @@ app = Flask(__name__)
 def home(): 
     return "Bot is running!"
 
+# --- ВЕБХУК ДЛЯ TELEGRAM ---
+@app.route('/' + TOKEN, methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route('/set_webhook')
+def set_webhook():
+    # Эта функция нужна, чтобы сообщить Telegram, куда отправлять сообщения
+    # Замени URL на свой адрес Render!
+    url = "https://college-botpython-bot-py.onrender.com/" + TOKEN
+    s = bot.set_webhook(url)
+    if s:
+        return "Webhook setup ok"
+    else:
+        return "Webhook setup failed"
+
+# --- ИГРЫ (Web App) ---
 @app.route('/games')
 def games_hub():
-    html = """
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://telegram.org/js/telegram-web-app.js"></script>
-        <style>
-            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; min-height: 100vh; }
-            h1 { text-align: center; background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-            .game-card { background: #14142b; border: 1px solid #2a2a4a; border-radius: 20px; padding: 20px; text-align: center; text-decoration: none; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
-            .game-card:active { transform: scale(0.95); background: #1a1a35; }
-            .game-icon { font-size: 40px; margin-bottom: 10px; }
-            .game-title { font-weight: bold; font-size: 16px; }
-            .disabled { opacity: 0.5; pointer-events: none; }
-        </style>
-    </head>
-    <body>
-        <h1>🎮 Игровой Хаб</h1>
-        <div class="grid">
-            <a href="/game" class="game-card">
-                <div class="game-icon">🕵️‍♂️</div>
-                <div class="game-title">Мафия</div>
-            </a>
-            <div class="game-card disabled">
-                <div class="game-icon">🎰</div>
-                <div class="game-title">Казино (Скоро)</div>
-            </div>
-            <div class="game-card disabled">
-                <div class="game-icon">🎲</div>
-                <div class="game-title">Угадай число (Скоро)</div>
-            </div>
-            <div class="game-card disabled">
-                <div class="game-icon">🎯</div>
-                <div class="game-title">Дартс (Скоро)</div>
-            </div>
-        </div>
-        <script> let tg = window.Telegram.WebApp; tg.expand(); tg.setHeaderColor('#0a0a14'); </script>
-    </body>
-    </html>
-    """
-    return html
+    # ... (код хаба игр оставь как был, он не мешает) ...
+    return "Игровой хаб"
 
 @app.route('/game')
 def game_page():
-    html_content = """
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://telegram.org/js/telegram-web-app.js"></script>
-        <style>
-            body { background-color: #0a0a14; color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
-            h1 { background: linear-gradient(90deg, #6e44ff, #ff44cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 32px; margin-bottom: 10px; }
-            p { color: #888; margin-bottom: 40px; }
-            .btn { background: linear-gradient(90deg, #6e44ff, #ff44cc); border: none; color: white; padding: 15px 30px; border-radius: 15px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 20px rgba(110, 68, 255, 0.5); width: 80%; max-width: 300px; margin: 0 auto 15px auto; display: block;}
-            .btn:active { transform: scale(0.95); }
-            .btn-join { background: #1a1a35; border: 1px solid #2a2a4a; box-shadow: none; }
-            #lobby-screen { display: none; flex-direction: column; align-items: center; }
-            .lobby-code { font-size: 36px; font-weight: bold; color: #00ff88; letter-spacing: 5px; margin: 20px 0; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
-            .player-list { background: #1a1a35; padding: 20px; border-radius: 15px; width: 80%; max-width: 300px; margin-bottom: 20px; text-align: left;}
-            .player-item { padding: 10px; border-bottom: 1px solid #2a2a4a; }
-            .player-item:last-child { border-bottom: none; }
-            .back-btn { position: absolute; top: 20px; left: 20px; color: #6e44ff; text-decoration: none; font-size: 24px; }
-        </style>
-    </head>
-    <body>
-        <a href="/games" class="back-btn">←</a>
-        <div id="main-screen">
-            <h1>🕵️‍♂️ Мафия</h1>
-            <p>Онлайн-игра для компании</p>
-            <button class="btn" onclick="createLobby()">➕ Создать лобби</button>
-            <button class="btn btn-join" onclick="joinLobby()">🔍 Найти игру</button>
-        </div>
-        <div id="lobby-screen">
-            <h1 style="font-size: 24px;">Ожидание игроков</h1>
-            <p style="margin-bottom: 5px;">Код комнаты:</p>
-            <div class="lobby-code" id="lobby-code">----</div>
-            <div class="player-list" id="player-list"><div class="player-item">Загрузка...</div></div>
-            <p style="font-size: 12px; color: #888;">Скинь этот код друзьям.</p>
-            <button class="btn btn-join" onclick="location.reload()" style="margin-top: 20px;">Выйти</button>
-        </div>
-        <script>
-            let tg = window.Telegram.WebApp;
-            tg.expand();
-            tg.setHeaderColor('#0a0a14');
-            let userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 1000000);
-            async function createLobby() {
-                const res = await fetch('/api/create_lobby', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId }) });
-                const data = await res.json();
-                if (data.success) showLobby(data.lobby_id);
-            }
-            async function joinLobby() {
-                const code = prompt("Введите код комнаты:");
-                if (!code) return;
-                const res = await fetch('/api/join_lobby', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_id: userId, lobby_id: code.toUpperCase() }) });
-                const data = await res.json();
-                if (data.success) showLobby(code.toUpperCase()); else alert(data.error);
-            }
-            function showLobby(code) {
-                document.getElementById('main-screen').style.display = 'none';
-                document.getElementById('lobby-screen').style.display = 'flex';
-                document.getElementById('lobby-code').innerText = code;
-                setInterval(() => checkPlayers(code), 2000);
-                checkPlayers(code);
-            }
-            async function checkPlayers(code) {
-                const res = await fetch('/api/lobby_status/' + code);
-                const data = await res.json();
-                if (data.success) {
-                    const list = document.getElementById('player-list');
-                    list.innerHTML = '';
-                    data.players.forEach((p, index) => { list.innerHTML += `<div class="player-item">👤 Игрок ${index + 1}</div>`; });
-                }
-            }
-        </script>
-    </body>
-    </html>
-    """
-    return html_content
+    # ... (код мафии оставь как был) ...
+    return "Мафия"
 
+# --- API ДЛЯ ЛОББИ ---
 lobbies = {}
-
 @app.route('/api/create_lobby', methods=['POST'])
 def create_lobby():
     data = request.json
@@ -402,3 +307,10 @@ def lobby_status(lobby_id):
     if lobby_id in lobbies:
         return jsonify({"success": True, "players": lobbies[lobby_id]['players']})
     return jsonify({"success": False})
+
+# --- ЗАПУСК ---
+if __name__ == '__main__':
+    # Удаляем вебхук, если он был, и запускаем сервер
+    bot.remove_webhook()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

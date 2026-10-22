@@ -17,7 +17,7 @@ ADMIN_ID = 8651366498
 # ==========================================
 
 BOT_ACTIVE = True
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False) 
 API_BASE = "http://109.233.236.101:5000"
 
 # --- БАЗА ДАННЫХ ---

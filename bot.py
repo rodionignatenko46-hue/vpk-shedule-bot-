@@ -264,7 +264,7 @@ def getMessage():
 def set_webhook():
     # Эта функция нужна, чтобы сообщить Telegram, куда отправлять сообщения
     # Замени URL на свой адрес Render!
-    url = "https://college-botpython-bot-py.onrender.com/" + TOKEN
+    url = "url = "https://vpk-shedule-bot.onrender.com/" + TOKEN/" + TOKEN
     s = bot.set_webhook(url)
     if s:
         return "Webhook setup ok"
